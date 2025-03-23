@@ -15,5 +15,6 @@ Here we exatcrt informauton from PDB interface files and datastructure is as bel
             center_of_mass    # index=12
 
 to run
-
+'''
  python peptide_preprocessor_all_in_one.py ./interface ./output_dir 32
+'''
