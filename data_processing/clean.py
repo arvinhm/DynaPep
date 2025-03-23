@@ -2,9 +2,8 @@ import os
 import pickle
 import shutil
 
-# Specify your directory containing the pickle files
-out_dir = "./interface"  # Change to your folder with pkl files
-key_dir = "./keys"           # Directory to store the keys
+out_dir = "./output_dir" 
+key_dir = "./keys"          
 os.makedirs(key_dir, exist_ok=True)
 
 # Step 0: Remove unwanted files and folders
