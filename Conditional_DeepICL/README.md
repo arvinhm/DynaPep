@@ -1,0 +1,1 @@
+python deepICL_train.py train     --save_dir ./some/save_dir     --data_dir ./data/new_data     --key_dir ./data/keys     --k 8  --batch_size 256   --num_epochs 100     --lr 1e-3     --num_workers 0     --num_ligand_atom_feature 21     --num_pocket_atom_feature 21 --num_hidden_feature 512 --num_latent_feature 512 --conditional
