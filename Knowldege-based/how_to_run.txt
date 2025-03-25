@@ -1,0 +1,7 @@
+python script_preprocess_peptides.py --input_folder ./interface --output_folder ./data
+
+
+python script_finetune_peptide.py --checkpoint ./checkpoint/gen_mol.pkl --train_data ./data/train_data.pkl --val_data ./data/val_data.pkl
+
+
+python script_generate_peptides.py --pdb_file GZMB.pdb --center_x 20 --center_y 35 --center_z 75 --box_size 15 15 15 --model_path ./peptide_finetuned.pt
