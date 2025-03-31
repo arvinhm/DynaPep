@@ -1,10 +1,7 @@
 #!/usr/bin/env python
 # super_big_code.py
 # -------------------------------------------------------
-# Combined code from arguments.py, dataset.py, train.py,
-# utils.py, model.py, layers.py, evaluate.py
-# plus modifications to load pretrained model, handle
-# new peptide data, and show a 'reasoning layer'.
+# This is DynaPep created by Arvin Haj-Mirzaian 
 # -------------------------------------------------------
 
 import os
@@ -19,7 +16,6 @@ import subprocess
 import argparse
 from math import pi as PI
 from datetime import datetime
-
 import numpy as np
 import torch
 import torch.nn as nn
@@ -43,10 +39,9 @@ from tqdm import tqdm
 
 
 # ############################################################################
-# ##########################    arguments.py   ################################
+# ###########################    arguments    ################################
 # ############################################################################
 torch.cuda.empty_cache()
-
 
 def train_args_parser():
     parser = argparse.ArgumentParser()
