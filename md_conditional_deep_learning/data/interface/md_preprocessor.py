@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # super_big_code.py
-# -------------------------------------------------------
-# This is DynaPep created by Arvin Haj-Mirzaian 
-# -------------------------------------------------------
+# ------------------------------------------------------------
+# This is DynaPep created and developed by Arvin Haj-Mirzaian 
+# ------------------------------------------------------------
 
 import os
 import sys
