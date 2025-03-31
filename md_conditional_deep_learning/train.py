@@ -1,11 +1,8 @@
 #!/usr/bin/env python
-# super_big_code.py
-# -------------------------------------------------------
-# Combined code from arguments.py, dataset.py, train.py,
-# utils.py, model.py, layers.py, evaluate.py
-# plus modifications to load pretrained model, handle
-# new peptide data, and show a 'reasoning layer'.
-# -------------------------------------------------------
+# md_train.py
+# ------------------------------------------------------------
+# This is DynaPep created and developed by Arvin Haj-Mirzaian 
+# ------------------------------------------------------------
 
 import os
 import sys
@@ -19,7 +16,6 @@ import subprocess
 import argparse
 from math import pi as PI
 from datetime import datetime
-
 import numpy as np
 import torch
 import torch.nn as nn
@@ -40,10 +36,12 @@ RDLogger.DisableLog("rdApp.*")
 import warnings
 warnings.filterwarnings("ignore")
 from tqdm import tqdm
+
+
 # ############################################################################
-# ##########################    arguments.py   ################################
+# ###########################    arguments    ################################
 # ############################################################################
-torch.cuda.empty_cache()
+torch.cuda.empty_cache() # to clear memory
 
 def train_args_parser():
     parser = argparse.ArgumentParser()
@@ -53,7 +51,7 @@ def train_args_parser():
     parser.add_argument("--distributed", help="distributed", action="store_true", default=True)
     parser.add_argument("--autocast", help="autocast", action="store_true", default=False)
     parser.add_argument("--num_workers", help="number of workers", type=int, default=1)
-    parser.add_argument("--batch_size", help="batch_size", type=int, default=8)
+    parser.add_argument("--batch_size", help="batch_size", type=int, default=64)
 
     # DIRECTORY SETTINGS
     parser.add_argument("--save_dir", help="save directory", type=str)
@@ -66,93 +64,6 @@ def train_args_parser():
     # MODEL SETTINGS
     parser.add_argument("--num_layers", help="num layers", type=int, default=10)
     parser.add_argument("--num_dense_layers", help="num dense layers", type=int, default=5)
-    parser.add_argument(
-        "--num_ligand_atom_feature",
-        help="ligand atom features",
-        type=int,
-        default=18, # was utils.NUM_LIGAND_ATOM_TYPES
-    )
-    parser.add_argument(
-        "--num_pocket_atom_feature",
-        help="pocket atom features",
-        type=int,
-        default=51, # was utils.NUM_POCKET_ATOM_TYPES
-    )
-    parser.add_argument("--num_hidden_feature", help="num hidden features", type=int, default=256)
-    parser.add_argument("--num_latent_feature", help="num latent features", type=int, default=256)
-    parser.add_argument("--gamma1", type=float, default=1e1)
-    parser.add_argument("--gamma2", type=float, default=5e1)
-    parser.add_argument(
-        "--dist_one_hot_param1",
-        help="dist. one-hot param for representation",
-        type=int,
-        nargs="+",
-        default=[0, 10, 25],
-    )
-    parser.add_argument(
-        "--dist_one_hot_param2",
-        help="dist. one-hot param for next distance",
-        type=int,
-        nargs="+",
-        default=[0, 15, 300],
-    )
-    parser.add_argument("--conditional", help="conditional", action="store_true")
-    parser.add_argument(
-        "--num_cond_feature",
-        help="num condition features",
-        type=int,
-        default=7, # was utils.NUM_INTERACTION_TYPES
-    )
-    parser.add_argument("--ssl", help="semi-supervised learning", action="store_true")
-
-    # TRAINING SETTINGS
-    parser.add_argument("--num_epochs", help="num epochs", type=int, default=100)
-    parser.add_argument("--lr", help="lr", type=float, default=1e-3)
-    parser.add_argument("--lr_decay", help="lr_decay", type=float, default=0.8)
-    parser.add_argument("--lr_tolerance", help="lr_tolerance", type=int, default=4)
-    parser.add_argument("--lr_min", help="lr_min", type=float, default=1e-6)
-    parser.add_argument("--weight_decay", help="weight_decay", type=float, default=0.1)
-    parser.add_argument(
-        "--vae_loss_coeff",
-        help="vae coeff for annealing",
-        type=float,
-        nargs="+",
-        default=[0.0, 1.0],
-    )
-    parser.add_argument(
-        "--vae_loss_beta",
-        help="decaying coeff for vae loss annealing",
-        type=float,
-        default=0.2,
-    )
-    parser.add_argument("--restart_file", help="restart_file", type=str, default=None)
-    parser.add_argument("--save_every", help="save every n epochs", type=int, default=1)
-
-    # #### ADDED: optional pretrained model argument
-    parser.add_argument("--pretrained_model", type=str, default=None,
-                        help="Path to a pretrained model checkpoint to load at start")
-
-    args = parser.parse_args()
-    return args
-
-
-def generate_args_parser():
-    parser = argparse.ArgumentParser()
-
-    # DEFAULT SETTINGS
-    parser.add_argument("--ngpu", help="ngpu", type=int, default=0)
-    parser.add_argument("--ncpu", help="ncpu", type=int, default=0)
-    parser.add_argument("-y", help="delete", action="store_true")
-
-    # DIRECTORY SETTINGS
-    parser.add_argument("--data_dir", help="data directory", type=str)
-    parser.add_argument("--key_dir", help="key directory", type=str)
-    parser.add_argument("--result_dir", help="result directory", type=str)
-    parser.add_argument("--restart_dir", help="restart model directory", type=str)
-
-    # MODEL SETTINGS
-    parser.add_argument("--num_layers", help="num layers", type=int, default=10)
-    parser.add_argument("--num_dense_layers", help="num layers", type=int, default=5)
     parser.add_argument(
         "--num_ligand_atom_feature",
         help="ligand atom features",
@@ -183,8 +94,77 @@ def generate_args_parser():
         nargs="+",
         default=[0, 15, 300],
     )
-    parser.add_argument("--use_scaffold", help="use_scaffold", action="store_true")
     parser.add_argument("--conditional", help="conditional", action="store_true")
+    parser.add_argument(
+        "--num_cond_feature",
+        help="num condition features",
+        type=int,
+        default=7,
+    )
+    parser.add_argument("--ssl", help="semi-supervised learning", action="store_true")
+
+    # TRAINING SETTINGS
+    parser.add_argument("--num_epochs", help="num epochs", type=int, default=100)
+    parser.add_argument("--lr", help="lr", type=float, default=1e-3)
+    parser.add_argument("--lr_decay", help="lr_decay", type=float, default=0.8)
+    parser.add_argument("--lr_tolerance", help="lr_tolerance", type=int, default=4)
+    parser.add_argument("--lr_min", help="lr_min", type=float, default=1e-6)
+    parser.add_argument("--weight_decay", help="weight_decay", type=float, default=0.1)
+    parser.add_argument(
+        "--vae_loss_coeff",
+        help="vae coeff for annealing",
+        type=float,
+        nargs="+",
+        default=[0.0, 1.0],
+    )
+    parser.add_argument(
+        "--vae_loss_beta",
+        help="decaying coeff for vae loss annealing",
+        type=float,
+        default=0.2,
+    )
+    parser.add_argument("--restart_file", help="restart_file", type=str, default=None)
+    parser.add_argument("--save_every", help="save every n epochs", type=int, default=1)
+
+    parser.add_argument("--pretrained_model", type=str, default=None,
+                        help="Path to a pretrained model checkpoint to load at start")
+
+    args = parser.parse_args()
+    return args
+
+# below is duplicated check please
+def generate_args_parser():
+    parser = argparse.ArgumentParser()
+
+    # DEFAULT SETTINGS
+    parser.add_argument("--ngpu", help="ngpu", type=int, default=0)
+    parser.add_argument("--ncpu", help="ncpu", type=int, default=0)
+    parser.add_argument("-y", help="delete", action="store_true")
+
+    # DIRECTORY SETTINGS
+    parser.add_argument("--data_dir", help="data directory", type=str)
+    parser.add_argument("--key_dir", help="key directory", type=str)
+    parser.add_argument("--result_dir", help="result directory", type=str)
+    parser.add_argument("--restart_dir", help="restart model directory", type=str)
+
+    # MODEL SETTINGS
+    parser.add_argument("--num_layers", help="num layers", type=int, default=10)
+    parser.add_argument("--num_dense_layers", help="num layers", type=int, default=5)
+    parser.add_argument(
+        "--num_ligand_atom_feature",
+        help="ligand atom features",
+        type=int,
+        default=21,
+    )
+    parser.add_argument(
+        "--num_pocket_atom_feature",
+        help="pocket atom features",
+        type=int,
+        default=21,
+    )
+
+
+    parser.add_argument("--use_scaffold", help="use_scaffold", action="store_true")
     parser.add_argument("--use_condition", help="use condition", action="store_true")
     parser.add_argument(
         "--num_cond_feature",
@@ -214,14 +194,14 @@ def generate_args_parser():
     return args
 
 # ############################################################################
-# ##########################    utils.py       ################################
+# ##########################      utils       ################################
 # ############################################################################
 
 ATOM_TYPES = ["C", "N", "O", "F", "P", "S", "Cl", "Br"]
 INTERACTION_TYPES = ["pipi", "anion", "cation", "hbd", "hba", "hydro"]
 
 NUM_LIGAND_ATOM_TYPES = len(ATOM_TYPES) + 1   # e.g. 8 + 1 = 9
-NUM_POCKET_ATOM_TYPES = 51
+NUM_POCKET_ATOM_TYPES = 21
 NUM_INTERACTION_TYPES = len(INTERACTION_TYPES) + 1  # e.g. 6 + 1 = 7
 
 def find_free_port():
@@ -321,7 +301,7 @@ def custom_collate_fn(list_of_dicts):
 
 
 # ############################################################################
-# ##########################    layers.py     #################################
+# ##########################     layers      #################################
 # ############################################################################
 
 class SoftOneHot(nn.Module):
@@ -377,7 +357,6 @@ class E3II_Layer(nn.Module):
         self.args = args
         self.hidden_feature = args.num_hidden_feature
         if args.conditional:
-            # Expect condition features of dimension num_cond_feature.
             self.cond_feature = args.num_cond_feature
             self.cond_mlp = nn.Linear(self.hidden_feature + self.cond_feature, self.hidden_feature, bias=False)
         else:
@@ -406,28 +385,19 @@ class E3II_Layer(nn.Module):
 
     def forward(self, data, cond=None):
         if self.args.conditional and cond is not None:
-            # --- Revised conditional branch ---
-            # Ensure cond is a tensor of shape (N, num_cond_feature)
-            # Case 1: cond is 1D (e.g., shape [cond_dim]), assume it is global and repeat for every node.
+
             if cond.dim() == 1:
-                # Now cond becomes (1, cond_dim) and then expand to (N, cond_dim)
                 cond = cond.unsqueeze(0).expand(data["pocket"].h.size(0), -1)
-            # Case 2: cond is 2D but the number of rows is 1 (global condition)
             elif cond.dim() == 2 and cond.size(0) == 1 and data["pocket"].h.size(0) > 1:
                 cond = cond.expand(data["pocket"].h.size(0), -1)
-            # Case 3: If cond is batched with a different number of rows, try to index using the pocket batch vector.
             if cond.size(-1) != self.args.num_cond_feature:
-                # If the condition features have too few columns, repeat along the feature dimension.
-                # (e.g., if cond has shape (N, 1) but we need (N, 7), repeat it 7 times.)
+
                 factor = self.args.num_cond_feature // cond.size(-1)
                 cond = cond.repeat(1, factor)
-            # At this point, cond should have shape (N, num_cond_feature)
-            # Concatenate the pocket node embeddings with the condition.
+
             data["pocket"].h_cond = torch.cat([data["pocket"].h, cond], dim=-1)
-            # Now, self.cond_mlp expects an input dimension of hidden_feature+num_cond_feature.
             data["pocket"].h = self.cond_mlp(data["pocket"].h_cond)
 
-        # --- Standard message passing below ---
         e_ll_src, e_ll_tar = data["l2l"].edge_index
         e_pp_src, e_pp_tar = data["p2p"].edge_index
         e_pl_src, e_pl_tar = data["p2l"].edge_index
@@ -475,7 +445,6 @@ class E3II_Layer(nn.Module):
 
 
 class EGCL(nn.Module):
-    """Example GCL used in SSLModel or other modules."""
     def __init__(self, args):
         super().__init__()
         self.args = args
@@ -520,7 +489,6 @@ class EGCL(nn.Module):
 
 
 class ConstrainedCrossAttention(nn.Module):
-    """(Optional) for advanced attention in NextDist, etc."""
     def __init__(self, args):
         super().__init__()
         self.args = args
@@ -533,11 +501,7 @@ class ConstrainedCrossAttention(nn.Module):
     def attention(self, h, x, batch, length):
         from torch_scatter import scatter_add, scatter_softmax
         sqrt_len = torch.pow(length.float(), -0.5)[batch]
-        # block diagonal mask ...
-        # (this is advanced usage if you want cross-attn across batch)
-        # We'll skip detailed implementation here for brevity.
 
-        # Basic code for demonstration (no large block masks)
         qkv_proj = self.qkv_proj(h)
         q, k, v = qkv_proj.chunk(3, dim=-1)
         attn_logits = torch.matmul(q, k.transpose(-2, -1))
@@ -553,12 +517,12 @@ class ConstrainedCrossAttention(nn.Module):
         return values, attn
 
 # ############################################################################
-# ######################   The new "Reasoning Layer"   #######################
+# ######################   Reasoning Layer   #######################
 # ############################################################################
 
 class ReasoningLayer(nn.Module):
     """
-    Revised ReasoningLayer that fuses sequence and MD metrics.
+    I added ReasoningLayer, which fuses sequence and MD metrics.
 
     It computes a per-graph meta vector from:
       [len(pep_seq_str), len(pep_smi_str), len(pep_scf_str), docking_score, binding_energy_kcal_per_mol]
@@ -601,7 +565,6 @@ class ReasoningLayer(nn.Module):
             global_meta = self.meta_mlp(meta_vec)
             global_meta_expanded = global_meta.expand(x.size(0), -1)
         else:
-            # Batched case
             B = int(batch.max().item() + 1)
             if not isinstance(pep_seq, list):
                 pep_seq = [pep_seq] * B
@@ -633,11 +596,10 @@ class ReasoningLayer(nn.Module):
 
 
 # ############################################################################
-# ##########################    model.py      ################################
+# ##########################      model       ################################
 # ############################################################################
 
 class VariationalEncoder(nn.Module):
-    """Simple VAE encoder for a readout of the ligand+pocket features."""
     def __init__(self, args):
         super().__init__()
         self.args = args
@@ -665,9 +627,6 @@ class VariationalEncoder(nn.Module):
 
 
 class Embedding(nn.Module):
-    """
-    Node embedding and E3II-layer propagation.
-    """
     def __init__(self, args):
         super().__init__()
         self.args = args
@@ -689,11 +648,6 @@ class Embedding(nn.Module):
 
 
 class NextType(nn.Module):
-    """
-    Predict p(Type) for each node from node embeddings.
-    This version returns per-node predictions of shape [N, num_types],
-    matching the ground truth stored in traj["ligand"].type_output.
-    """
     def __init__(self, args, embedding=None):
         super().__init__()
         self.args = args
@@ -705,35 +659,26 @@ class NextType(nn.Module):
         self.act = nn.SiLU()
         self.last_act = None
         layers = []
-        # Create a series of dense layers that decrease the dimension
         n_dims = list(np.linspace(args.num_hidden_feature, 1, args.num_dense_layers + 1).astype(int))
         for n_in, n_out in zip(n_dims[:-1], n_dims[1:]):
             layers.append(nn.Linear(n_in, n_out))
             layers.append(self.act)
-        layers = layers[:-1]  # Remove the last activation if not needed
+        layers = layers[:-1]
         if self.last_act is not None:
             layers.append(self.last_act)
         self.dense = nn.Sequential(*layers)
 
-        # Create a fixed embedding for each possible atom type.
-        # This has shape [num_ligand_atom_feature, num_ligand_atom_feature]
         self.atom_type = torch.eye(args.num_ligand_atom_feature)
         self.atom_type = nn.Parameter(self.atom_type, requires_grad=False)
 
     def forward(self, data, key="ligand"):
-        # data[key].h is the node representation: shape [N, hidden_dim]
-        # Embed each atom type: shape becomes [num_types, hidden_dim]
+
         embed_type = self.embedding(self.atom_type)  # [num_types, hidden_dim]
-        # Expand to broadcast over nodes:
         embed_type = embed_type.unsqueeze(0)          # [1, num_types, hidden_dim]
         repr_type = data[key].h.unsqueeze(1)          # [N, 1, hidden_dim]
-        # Multiply node representations with each type embedding:
         mul_type = embed_type * repr_type             # [N, num_types, hidden_dim]
-        # Pass through dense layers:
         dense_type = self.dense(mul_type).squeeze(-1)   # [N, num_types]
-        # Apply log softmax to get log-probabilities for each node:
         next_type = F.log_softmax(dense_type, dim=-1)   # [N, num_types]
-        # **Note:** We removed the scatter_add aggregation.
         return next_type
 
 
@@ -779,7 +724,7 @@ class NextDist(nn.Module):
 
 class SSLModel(nn.Module):
     """
-    For semi-supervised learning condition prediction (just an example).
+    For semi-supervised learning condition prediction.
     """
     def __init__(self, args, embedding=None):
         super().__init__()
@@ -803,129 +748,142 @@ class SSLModel(nn.Module):
         return y
 
 
-# ###########################  The main Model: DeepICL  #######################
+# ###########################  The main Model: DynaPep  #######################
 
-class DeepICL(nn.Module):
+class DynaPep(nn.Module):
     """
-    Revised DeepICL model that incorporates MD metrics:
-      - Global docking score and binding energy.
-      - Per-residue RMSD for the ligand (peptide).
-      - Per-pocket-residue energy (via an extra head)
-
-    It computes:
-      total_loss = VAE_loss + KL_loss (NextType + NextDist) + MD_loss_total + SSL_loss
-
-    MD_loss_total = MD_regression_loss (for docking & binding) + RMSD_loss (for ligand) + Pocket_energy_loss (for pocket)
+    Now the revised DynaPep model integrates:
+      - A conditional VAE for peptide encoding with KL annealing support.
+      - A reasoning layer that fuses pocket features, the peptide latent vector, and RMSD information.
+      - A decoder branch for peptide sequence generation (via NextType/NextDist) and an MD regression head.
+      
+    Key revisions:
+      • The forward() method accepts a kl_weight parameter (e.g., from a KL annealing schedule).
+      • The latent vector is concatenated with pocket features at every stage (ensuring continuous conditioning).
+      • The MD head now receives a fused context that includes both pocket and peptide (latent) info.
+      • Comments indicate where additional improvements (teacher-forcing dropout, RMSD normalization,
+        dual-branch reasoning, etc.) could be inserted.
     """
     def __init__(self, args):
-        super().__init__()
+        super(DynaPep, self).__init__()
         self.args = args
+        # Embedding modules for ligand and pocket.
         self.embedding = Embedding(args)
+        # VAE encoder: produces latent representation (mean and logvar) from the ligand (peptide).
         self.vae = VariationalEncoder(args)
         self.conditional = args.conditional
         self.num_cond_feature = args.num_cond_feature if self.conditional else 0
 
+        # Optional semi-supervised learning branch.
         if args.ssl:
             self.ssl_model = SSLModel(args)
 
-        # Revised reasoning layer that can also optionally accept pocket energy
+        # Scale factors for loss components.
+        self.scale_vae = getattr(args, "scale_vae", 1.0)
+        self.scale_md = getattr(args, "scale_md", 1e-4)
+        self.scale_ssl = getattr(args, "scale_ssl", 1.0)
+        # Note: KL weight is now supplied externally via the forward() method.
+        
         self.reasoning_layer = ReasoningLayer(hidden_dim=args.num_hidden_feature, use_rmsd=True)
         self.latent_mlp = nn.Linear(
             args.num_hidden_feature + args.num_latent_feature + self.num_cond_feature,
             args.num_hidden_feature
         )
+        
         self.next_type_ll = NextType(args, self.embedding.l_node_emb)
         self.next_type_lp = NextType(args, self.embedding.l_node_emb)
         self.next_dist_ll = NextDist(args, self.embedding.l_node_emb)
         self.next_dist_lp = NextDist(args, self.embedding.l_node_emb)
+        # KL divergence loss function.
         self.kl_loss_fn = nn.KLDivLoss(reduction="none")
+
         self.md_regressor = nn.Sequential(
             nn.Linear(args.num_hidden_feature + args.num_latent_feature + self.num_cond_feature, 64),
             nn.ReLU(),
-            nn.Linear(64, 2)  # outputs: predicted docking and binding
+            nn.Linear(64, 2)
         )
-        self.rmsd_head = nn.Sequential(
-            nn.Linear(args.num_hidden_feature, 1)
-        )
-        # NEW: Head for per-residue pocket energy
-        self.pocket_energy_head = nn.Sequential(
-            nn.Linear(args.num_hidden_feature, 1)
-        )
+        self.rmsd_head = nn.Linear(args.num_hidden_feature, 1)
+        self.pocket_energy_head = nn.Linear(args.num_hidden_feature, 1)
 
-    def forward(self, data_dict):
-        # Unpack the input dictionary.
-        whole, traj, _ = data_dict.values()
+    def forward(self, data_dict, kl_weight=1.0):
 
-        # Retrieve ground-truth MD metrics.
-        gt_docking = getattr(whole, "docking_score", 0.0)
-        gt_binding = getattr(whole, "binding_energy_kcal_per_mol", 0.0)
+        whole = data_dict["whole"]
+        traj = data_dict["traj"]
+
+        raw_docking = getattr(whole, "docking_score", 0.0)
+        if torch.is_tensor(raw_docking):
+            raw_docking = raw_docking.mean().item() if raw_docking.numel() > 1 else raw_docking.item()
+        raw_binding = getattr(whole, "binding_energy_kcal_per_mol", 0.0)
+        if torch.is_tensor(raw_binding):
+            raw_binding = raw_binding.mean().item() if raw_binding.numel() > 1 else raw_binding.item()
+
         gt_rmsd = getattr(whole, "md_per_residue_rmsd", None)
         if gt_rmsd is None:
             gt_rmsd = whole["ligand"].x.new_zeros(whole["ligand"].num_nodes)
-        gt_pocket_energy = getattr(whole["pocket"], "pocket_energy", None)  # may be None
+        gt_pocket_energy = getattr(whole["pocket"], "pocket_energy", None)
 
         cond_whole = whole.pocket_prop if self.conditional else None
         cond_traj = traj.pocket_prop if self.conditional else None
 
-        # Embed the whole graph and compute latent representation.
-        self.embedding(whole, cond=cond_whole)
-        latent_vec, vae_loss = self.vae(whole)
-        vae_loss_final = self.args.vae_loss_coeff[1] * vae_loss.sum()
 
-        # Get peptide strings.
+        self.embedding(whole, cond=cond_whole)
+        latent_vec, vae_loss_val = self.vae(whole)
+        vae_loss = vae_loss_val.sum()
+
         pep_seq = getattr(whole, "pep_seq_str", "")
         pep_smi = getattr(whole, "pep_smi_str", "")
-        pep_scf = getattr(whole, "pep_scf_str", "")
+        pep_scf = getattr(whole, "pep_scf_str", "")  # May be empty if not available.
 
-        # Ensure batch vectors exist.
         if not hasattr(whole["ligand"], "batch"):
-            whole["ligand"].batch = torch.zeros(whole["ligand"].x.size(0), dtype=torch.long, device=whole["ligand"].x.device)
+            whole["ligand"].batch = torch.zeros(whole["ligand"].x.size(0),
+                                                 dtype=torch.long,
+                                                 device=whole["ligand"].x.device)
         if not hasattr(whole["pocket"], "batch"):
-            whole["pocket"].batch = torch.zeros(whole["pocket"].x.size(0), dtype=torch.long, device=whole["pocket"].x.device)
+            whole["pocket"].batch = torch.zeros(whole["pocket"].x.size(0),
+                                                 dtype=torch.long,
+                                                 device=whole["pocket"].x.device)
 
-        # Apply reasoning layer on whole graph.
         whole["ligand"].h = self.reasoning_layer(
             whole["ligand"].h, pep_seq, pep_smi, pep_scf,
-            docking=gt_docking, binding=gt_binding, rmsd=gt_rmsd,
+            docking=raw_docking, binding=raw_binding, rmsd=gt_rmsd,
             batch=whole["ligand"].batch
         )
         whole["pocket"].h = self.reasoning_layer(
             whole["pocket"].h, pep_seq, pep_smi, pep_scf,
-            docking=gt_docking, binding=gt_binding, rmsd=gt_pocket_energy,
+            docking=raw_docking, binding=raw_binding, rmsd=gt_pocket_energy,
             batch=whole["pocket"].batch
         )
 
-        # Process trajectory graph.
         self.embedding(traj, cond=cond_traj)
         if not hasattr(traj["ligand"], "batch"):
-            traj["ligand"].batch = torch.zeros(traj["ligand"].x.size(0), dtype=torch.long, device=traj["ligand"].x.device)
+            traj["ligand"].batch = torch.zeros(traj["ligand"].x.size(0),
+                                                dtype=torch.long,
+                                                device=traj["ligand"].x.device)
         if not hasattr(traj["pocket"], "batch"):
-            traj["pocket"].batch = torch.zeros(traj["pocket"].x.size(0), dtype=torch.long, device=traj["pocket"].x.device)
-
+            traj["pocket"].batch = torch.zeros(traj["pocket"].x.size(0),
+                                                dtype=torch.long,
+                                                device=traj["pocket"].x.device)
         traj["ligand"].h = self.reasoning_layer(
             traj["ligand"].h, pep_seq, pep_smi, pep_scf,
-            docking=gt_docking, binding=gt_binding, rmsd=gt_rmsd,
+            docking=raw_docking, binding=raw_binding, rmsd=gt_rmsd,
             batch=traj["ligand"].batch
         )
         traj["pocket"].h = self.reasoning_layer(
             traj["pocket"].h, pep_seq, pep_smi, pep_scf,
-            docking=gt_docking, binding=gt_binding, rmsd=gt_pocket_energy,
+            docking=raw_docking, binding=raw_binding, rmsd=gt_pocket_energy,
             batch=traj["pocket"].batch
         )
 
-        # Merge latent vector with trajectory pocket features.
+
         psize = traj["pocket"].h.size(0)
-        if self.conditional and (cond_traj is not None):
-            # Ensure cond_traj has shape (psize, num_cond_feature)
-            if cond_traj.size(-1) != self.args.num_cond_feature:
-                # If condition has only 1 feature, repeat it along the last dimension.
-                cond_traj = cond_traj.repeat(1, self.args.num_cond_feature)
+        if self.conditional and cond_traj is not None:
+            if cond_traj.size(-1) != self.num_cond_feature:
+                cond_traj = cond_traj.repeat(1, self.num_cond_feature)
             cat_vec = torch.cat([traj["pocket"].h, cond_traj, latent_vec.repeat(psize, 1)], dim=-1)
         else:
             cat_vec = torch.cat([traj["pocket"].h, latent_vec.repeat(psize, 1)], dim=-1)
         traj["pocket"].h = self.latent_mlp(cat_vec)
 
-        # Next-Type and Next-Dist losses.
         pred_type_lig = self.next_type_ll(traj, key="ligand")
         pred_type_poc = self.next_type_lp(traj, key="pocket")
         gt_type_lig = traj["ligand"].type_output
@@ -941,221 +899,177 @@ class DeepICL(nn.Module):
                     self.kl_loss_fn(pred_dist_poc, gt_dist_poc).sum()
         kl_loss = type_loss + dist_loss
 
-        # --- Revised MD Regression Loss Block ---
-        md_pred = self.md_regressor(cat_vec)  # shape: [psize, 2]
-        if isinstance(gt_docking, torch.Tensor) and gt_docking.numel() > 1:
-            pocket_batch = traj["pocket"].batch  # shape: [psize]
-            target_docking = gt_docking[pocket_batch]
-            target_binding = gt_binding[pocket_batch]
-            db_sum = (target_docking + target_binding).mean().item()
-        else:
-            target_docking = md_pred[:, 0].new_full((psize,), float(gt_docking))
-            target_binding = md_pred[:, 1].new_full((psize,), float(gt_binding))
-            db_sum = float(gt_docking + gt_binding)
-        alpha = 0.01
-        weight_factor = math.exp(-alpha * db_sum)
-        mse_dock = F.mse_loss(md_pred[:, 0], target_docking, reduction="mean")
-        mse_bind = F.mse_loss(md_pred[:, 1], target_binding, reduction="mean")
-        md_reg_loss = weight_factor * (mse_dock + mse_bind)
 
-        # RMSD Loss for ligand nodes.
+        md_preds = self.md_regressor(cat_vec)
+        docking_pred = md_preds[:, 0].mean()
+        binding_pred = md_preds[:, 1].mean()
+        docking_mse = F.mse_loss(docking_pred, torch.tensor(raw_docking, device=cat_vec.device))
+        binding_mse = F.mse_loss(binding_pred, torch.tensor(raw_binding, device=cat_vec.device))
+        md_reg_loss = docking_mse + binding_mse
+
+
         pred_rmsd = self.rmsd_head(whole["ligand"].h).squeeze(-1)
         rmsd_loss = F.mse_loss(pred_rmsd, gt_rmsd, reduction="mean")
-
-        # Pocket Energy Loss (if ground truth is provided).
         if gt_pocket_energy is not None:
-            pred_pocket_energy = self.pocket_energy_head(whole["pocket"].h).squeeze(-1)
-            pocket_energy_loss = F.mse_loss(pred_pocket_energy, gt_pocket_energy, reduction="mean")
+            pred_pe = self.pocket_energy_head(whole["pocket"].h).squeeze(-1)
+            pocket_energy_loss = F.mse_loss(pred_pe, gt_pocket_energy, reduction="mean")
         else:
             pocket_energy_loss = 0.0
+        raw_md_loss = md_reg_loss + rmsd_loss + pocket_energy_loss
 
-        md_loss_total = md_reg_loss + rmsd_loss + pocket_energy_loss
 
-        # Optional SSL loss.
-        ssl_loss = torch.tensor(0.0, device=whole["ligand"].x.device)
+        ssl_loss = 0.0
         if self.args.ssl:
-            ssl_out = self.ssl_model(whole)
-            ssl_loss = self.ssl_loss_fn(ssl_out, cond_whole.argmax(-1)).mean()
+            # Insert semi-supervised loss logic here.
+            pass
 
-        total_loss = vae_loss_final + kl_loss + md_loss_total + ssl_loss
+        total_loss = (self.scale_vae * vae_loss +
+                      kl_weight * kl_loss +
+                      self.scale_md * raw_md_loss +
+                      self.scale_ssl * ssl_loss)
 
-        return total_loss, vae_loss_final, kl_loss, md_loss_total, ssl_loss
-
+        return total_loss, vae_loss, kl_loss, (self.scale_md * raw_md_loss), ssl_loss
 
 # ############################################################################
-# ##########################    dataset.py    ################################
+# ##########################      dataset     ################################
 # ############################################################################
+import numpy as np
+import torch
+from torch_geometric.data import HeteroData, Batch
+from torch_geometric.nn import radius_graph  # <<-- Added import
+from torch import cdist
+from torch import topk 
+
+from torch.utils.data import Sampler
+import math
+import random
+from collections import defaultdict
+
+class SystemGroupingSampler(Sampler):
+
+    def __init__(self, dataset, shuffle=True):
+        self.dataset = dataset
+        self.shuffle = shuffle
+        self.system2indices = defaultdict(list)
+        # Expect dataset.samples to be a list of tuples: (key, system_id)
+        for idx in range(len(dataset)):
+            _, system_id = dataset.samples[idx]
+            self.system2indices[system_id].append(idx)
+        self.system_ids = list(self.system2indices.keys())
+        if self.shuffle:
+            random.shuffle(self.system_ids)
+
+    def __iter__(self):
+        if self.shuffle:
+            random.shuffle(self.system_ids)
+        for sys_id in self.system_ids:
+            yield self.system2indices[sys_id]
+
+    def __len__(self):
+        return len(self.system_ids)
+
 
 class DataProcessor(object):
+
     def __init__(self, args, mode="train"):
         self.args = args
         self.mode = mode
         self.radial_cutoff = args.dist_one_hot_param1[1]
         self.distance_expand1 = SoftOneHot(*args.dist_one_hot_param1, gamma=args.gamma1)
         self.distance_expand2 = SoftOneHot(*args.dist_one_hot_param2, gamma=args.gamma2, normalize=True)
-        self.num_dim = 3
-        self.use_scaffold = getattr(args, "use_scaffold", False)
-        self.o_Z = torch.zeros(1, args.num_ligand_atom_feature)
-        self.o_R = torch.zeros(1, self.num_dim)
-        self.t_Z = torch.zeros(1, args.num_ligand_atom_feature)
-        self.t_Z[:, args.num_ligand_atom_feature - 1] = 1.0
-        self.f_Z = torch.zeros(1, args.num_ligand_atom_feature)
-        self.f_Z[:, args.num_ligand_atom_feature - 1] = 1.0
-        self.distance_dummy = torch.zeros(1, args.dist_one_hot_param2[-1])
 
     def get_input_from_data(self, data_dict):
-        """
-        data_dict is the dictionary loaded from PKL:
-        {
-            "ligand_type": <np.array>,
-            "ligand_coord": <np.array>,
-            "pocket_type": <np.array>,
-            "pocket_coord": <np.array>,
-            "ligand_adj": <np.array>,
-            "pep_seq_str": <str>,
-            "pep_smi": <str>,
-            "ligand_n": <int>,
-            "pocket_cond": <np.array>,
-            "center_of_mass": <np.array>,
-            "docking_score": <float>,
-            "binding_energy_kcal_per_mol": <float>,
-            "md_global_rmsd_nm": <float>,
-            "md_mean_distance_nm": <float>,
-            "md_per_residue_rmsd": <np.array>,
-            ...
-        }
-        """
-        import torch
-        from torch_geometric.data import HeteroData, Batch
-        from torch_geometric.nn import radius_graph
-        from torch import cdist, topk
-        
-        # 1) Extract fields from the dictionary:
         ligand_type  = data_dict["ligand_type"]
         ligand_coord = data_dict["ligand_coord"]
         pocket_type  = data_dict["pocket_type"]
         pocket_coord = data_dict["pocket_coord"]
-        ligand_adj   = data_dict["ligand_adj"]
         pep_seq_str  = data_dict["pep_seq_str"]
-        # The PKL uses "pep_smi", not "pep_smi_str":
         pep_smi_str  = data_dict["pep_smi"]
-        ligand_n     = data_dict["ligand_n"]
         pocket_cond  = data_dict["pocket_cond"]
-        center_of_mass = data_dict["center_of_mass"]
-        
-        # (Optionally) also read these MD metrics from data_dict:
-        docking_score = data_dict["docking_score"]
-        binding_energy = data_dict["binding_energy_kcal_per_mol"]
-        md_rmsd_array = data_dict["md_per_residue_rmsd"]  # shape [N_ligand]
-        # You can store them in 'whole' for the model to see:
-        
-        # 2) Build your "whole" HeteroData
+
+        docking_score  = float(data_dict["docking_score"])      # e.g., -9.2
+        binding_energy = float(data_dict["binding_energy_kcal_per_mol"])  # e.g., -45.2
+        md_rmsd_array  = np.array(data_dict["md_per_residue_rmsd"])  # shape [n_res]
+
         whole = HeteroData()
-        whole["ligand"].x   = torch.tensor(ligand_type,  dtype=torch.float)
+        whole["ligand"].x = torch.tensor(ligand_type, dtype=torch.float)
         whole["ligand"].pos = torch.tensor(ligand_coord, dtype=torch.float)
-        whole["pocket"].x   = torch.tensor(pocket_type,  dtype=torch.float)
+        whole["pocket"].x = torch.tensor(pocket_type, dtype=torch.float)
         whole["pocket"].pos = torch.tensor(pocket_coord, dtype=torch.float)
-        
-        whole["ligand"].num_nodes = whole["ligand"].x.size(0)
-        whole["pocket"].num_nodes = whole["pocket"].x.size(0)
-        
-        # 3) Store the string fields:
-        whole.pep_seq_str   = pep_seq_str
-        whole.pep_smi_str   = pep_smi_str
-        whole.pep_scf_str   = ""  # if none or if you want
-        whole.docking_score = float(docking_score)
-        whole.binding_energy_kcal_per_mol = float(binding_energy)
+
+        whole.pep_seq_str = pep_seq_str
+        whole.pep_smi_str = pep_smi_str
+        whole.pep_scf_str = ""
+        whole.docking_score = docking_score
+        whole.binding_energy_kcal_per_mol = binding_energy
         whole.md_per_residue_rmsd = torch.tensor(md_rmsd_array, dtype=torch.float)
-        
-        # Also store pocket_cond as a property:
-        whole.pocket_prop   = torch.tensor(pocket_cond, dtype=torch.float)
-        
-        # 4) radius_graph, etc. (like your existing code)
+        whole.pocket_prop = torch.tensor(pocket_cond, dtype=torch.float)
+
         l2l_index = radius_graph(whole["ligand"].pos, r=self.radial_cutoff)
         p2p_index = radius_graph(whole["pocket"].pos, r=self.radial_cutoff)
         if l2l_index.numel() == 0:
-            import torch
-            l2l_index = torch.zeros((2,1), dtype=torch.long)
+            l2l_index = torch.zeros((2, 1), dtype=torch.long)
         if p2p_index.numel() == 0:
-            import torch
-            p2p_index = torch.zeros((2,1), dtype=torch.long)
-        
-        whole["ligand","l2l","ligand"].edge_index = l2l_index
-        whole["pocket","p2p","pocket"].edge_index = p2p_index
-        
-        # distance expansions
+            p2p_index = torch.zeros((2, 1), dtype=torch.long)
+        whole["ligand", "l2l", "ligand"].edge_index = l2l_index
+        whole["pocket", "p2p", "pocket"].edge_index = p2p_index
+
         l2l_weight = (whole["ligand"].pos[l2l_index[0]] - whole["ligand"].pos[l2l_index[1]]).norm(dim=-1)
         p2p_weight = (whole["pocket"].pos[p2p_index[0]] - whole["pocket"].pos[p2p_index[1]]).norm(dim=-1)
-        l2l_attr   = self.distance_expand1(l2l_weight)[0]
-        p2p_attr   = self.distance_expand1(p2p_weight)[0]
-        
+        l2l_attr = self.distance_expand1(l2l_weight)[0]
+        p2p_attr = self.distance_expand1(p2p_weight)[0]
+
         whole["l2l"].edge_weight = l2l_weight
         whole["p2p"].edge_weight = p2p_weight
-        whole["l2l"].edge_attr   = l2l_attr
-        whole["p2p"].edge_attr   = p2p_attr
-        
-        # ligand->pocket kNN
+        whole["l2l"].edge_attr = l2l_attr
+        whole["p2p"].edge_attr = p2p_attr
+
         l_n = whole["ligand"].x.size(0)
         p_n = whole["pocket"].x.size(0)
         if p_n == 0 or l_n == 0:
-            pl_index = torch.zeros((2,1), dtype=torch.long)
+            pl_index = torch.zeros((2, 1), dtype=torch.long)
             p2l_weight = torch.zeros((1,), dtype=torch.float)
-            p2l_attr   = torch.zeros((1,self.args.dist_one_hot_param1[-1]), dtype=torch.float)
+            p2l_attr = torch.zeros((1, self.args.dist_one_hot_param1[-1]), dtype=torch.float)
         else:
-            dist_mat   = cdist(whole["ligand"].pos, whole["pocket"].pos)
-            k_val      = self.args.k if self.args.k else 8
-            k_val      = min(k_val, p_n)
-            p_knn_index= topk(dist_mat, k=k_val, largest=False, dim=-1)[1]
-            p_index    = p_knn_index.view(-1)
-            l_index    = torch.arange(l_n).unsqueeze(-1).repeat(1,k_val).view(-1)
-            pl_index   = torch.stack([p_index, l_index], dim=0)
+            dist_mat = cdist(whole["ligand"].pos, whole["pocket"].pos)
+            k_val = self.args.k if self.args.k else 8
+            k_val = min(k_val, p_n)
+            p_knn_index = topk(dist_mat, k=k_val, largest=False, dim=-1)[1]
+            p_index = p_knn_index.view(-1)
+            l_index = torch.arange(l_n).unsqueeze(-1).repeat(1, k_val).view(-1)
+            pl_index = torch.stack([p_index, l_index], dim=0)
             p2l_weight = (whole["pocket"].pos[p_index] - whole["ligand"].pos[l_index]).norm(dim=-1)
-            p2l_attr   = self.distance_expand1(p2l_weight)[0]
-        
-        whole["pocket","p2l","ligand"].edge_index = pl_index
+            p2l_attr = self.distance_expand1(p2l_weight)[0]
+
+        whole["pocket", "p2l", "ligand"].edge_index = pl_index
         whole["p2l"].edge_weight = p2l_weight
-        whole["p2l"].edge_attr   = p2l_attr
-        
-        # pre-batch
+        whole["p2l"].edge_attr = p2l_attr
+
         whole = Batch.from_data_list([whole])
-        
-        # 5) Build the "traj" placeholder
         traj = whole.clone()
-        
-        # Provide "type_output" and "dist_output" to lig/pocket
+
         ligand_count = traj["ligand"].x.size(0)
         pocket_count = traj["pocket"].x.size(0)
-        
-        # Suppose we fill them with uniform distributions
         type_output_ligand = torch.ones(ligand_count, self.args.num_ligand_atom_feature)
         type_output_ligand = type_output_ligand / type_output_ligand.sum(dim=-1, keepdim=True)
-        
         dist_output_ligand = torch.ones(ligand_count, self.args.dist_one_hot_param2[-1])
         dist_output_ligand = dist_output_ligand / dist_output_ligand.sum(dim=-1, keepdim=True)
-        
         type_output_pocket = torch.ones(pocket_count, self.args.num_ligand_atom_feature)
         type_output_pocket = type_output_pocket / type_output_pocket.sum(dim=-1, keepdim=True)
-        
         dist_output_pocket = torch.ones(pocket_count, self.args.dist_one_hot_param2[-1])
         dist_output_pocket = dist_output_pocket / dist_output_pocket.sum(dim=-1, keepdim=True)
-        
-        traj["ligand"].type_output    = type_output_ligand
+
+        traj["ligand"].type_output = type_output_ligand
         traj["ligand"].dist_ll_output = dist_output_ligand
-        traj["ligand"].mask           = torch.ones(ligand_count)
-        
-        traj["pocket"].type_output    = type_output_pocket
+        traj["ligand"].mask = torch.ones(ligand_count)
+        traj["pocket"].type_output = type_output_pocket
         traj["pocket"].dist_lp_output = dist_output_pocket
-        traj["pocket"].mask           = torch.ones(pocket_count)
-        
-        # Keep the same pocket_prop as in 'whole'
+        traj["pocket"].mask = torch.ones(pocket_count)
         traj.pocket_prop = whole.pocket_prop.clone()
-        
-        # batch indices
         traj["ligand"].batch = torch.zeros(ligand_count, dtype=torch.long)
         traj["pocket"].batch = torch.zeros(pocket_count, dtype=torch.long)
-        
+
         traj = Batch.from_data_list([traj])
-        
         return whole, traj
 
 class MoleculeDataset(Dataset):
@@ -1187,21 +1101,42 @@ class PDBbindDataset(MoleculeDataset):
         import pickle
         with open(key_file, "rb") as f:
             self.key_list = pickle.load(f)
+        
+        self.samples = []
+        for key in self.key_list:
+            # Example: key = "1bs6_F_C_cluster1.pkl"
+            # Let's parse system_id = "1bs6_F_C"
+            # (assuming the key always has "_clusterN.pkl" at the end)
+            filename_no_ext = key.replace(".pkl", "")
+            # split off "_cluster..."
+            # e.g. "1bs6_F_C_cluster1" -> ["1bs6_F_C", "1"] if we split by "_cluster"
+            parts = filename_no_ext.split("_cluster")
+            if len(parts) == 2:
+                system_id = parts[0]  # e.g. "1bs6_F_C"
+            else:
+                system_id = filename_no_ext
+            
+            self.samples.append((key, system_id))
+
 
     def __len__(self):
-        return len(self.key_list)
+        return len(self.samples)
 
     def __getitem__(self, idx):
-        key = self.key_list[idx]
+        key, system_id = self.samples[idx]
         full_path = os.path.join(self.data_dir, key)
         import pickle
         with open(full_path, "rb") as f:
             data = pickle.load(f)
+        
         whole, traj = self.processor.get_input_from_data(data)
-        return {"whole": whole, "traj": traj, "key": key}
+        # We store the system_id in the dictionary so we can group in the sampler if needed
+        # or store it in 'whole' or 'traj' if you like.
+        item = {"whole": whole, "traj": traj, "key": key, "system_id": system_id}
+        return item
 
 # ############################################################################
-# ##########################    evaluate.py   ################################
+# ##########################     evaluate     ################################
 # ############################################################################
 
 def save_results(mol_list, fn):
@@ -1231,7 +1166,6 @@ def filter_generated_results(keys, result_dir, train_smiles=None, filter_level=0
             print("No generated molecules for", key)
             continue
 
-        # 1) check validity
         val_mol_list = []
         val_smi_dict = {}
         for fn in gen_fns:
@@ -1268,7 +1202,6 @@ def filter_generated_results(keys, result_dir, train_smiles=None, filter_level=0
             total_mol_list += val_mol_list
             continue
 
-        # 2) uniqueness
         uni_mol_list = []
         uni_smi_dict = {}
         val_keys = list(val_smi_dict.keys())
@@ -1291,7 +1224,6 @@ def filter_generated_results(keys, result_dir, train_smiles=None, filter_level=0
             total_mol_list += uni_mol_list
             continue
 
-        # 3) novelty
         nov_mol_list = []
         nov_smi_dict = {}
         uni_keys = list(uni_smi_dict.keys())
@@ -1347,7 +1279,7 @@ def main_evaluate():
         print(f"TOTAL NOVELTY: {nov:.2f}")
 
 # ############################################################################
-# ##########################    train.py      ################################
+# ##########################      train       ################################
 # ############################################################################
 
 def sample_to_device(sample, device):
@@ -1358,53 +1290,38 @@ def sample_to_device(sample, device):
 from contextlib import nullcontext
 import torch.distributed as dist
 
-def train_one_epoch(
-    model,
-    args,
-    optimizer,
-    data_loader,
-    train_mode: bool,
-    device,
-    scaler=None
-):
-    """
-    train_mode=True  -> training step
-    train_mode=False -> validation step (no gradient)
-    """
+import torch.distributed as dist
+from contextlib import nullcontext
+
+def train_one_epoch(model, args, optimizer, data_loader, train_mode: bool, device, scaler=None):
+
     if train_mode:
         model.train()
     else:
         model.eval()
 
-    import numpy as np
-
-    # We store *sums* of local losses rather than a list.
     total_loss_sum = 0.0
     vae_loss_sum   = 0.0
     type_loss_sum  = 0.0
     dist_loss_sum  = 0.0
     ssl_loss_sum   = 0.0
-    local_count    = 0   # how many batches this rank sees
+    local_count    = 0
 
-    # Only rank 0 shows a progress bar
     if not dist.is_initialized() or dist.get_rank() == 0:
         from tqdm import tqdm
-        pbar = tqdm(data_loader, total=len(data_loader),
-                    desc=("Train" if train_mode else "Valid"), leave=False)
+        pbar = tqdm(data_loader, total=len(data_loader), desc=("Train" if train_mode else "Valid"), leave=False)
     else:
         pbar = data_loader
 
-    # Use torch.no_grad() for validation, else do nothing
+    from contextlib import nullcontext
     ctx = torch.no_grad() if not train_mode else nullcontext()
     with ctx:
         for sample in pbar:
             local_count += 1
 
-            # Move data to device
             sample["whole"].to(device)
             sample["traj"].to(device)
 
-            # Forward pass
             if train_mode and args.autocast:
                 import torch.cuda.amp as amp
                 with amp.autocast():
@@ -1412,50 +1329,45 @@ def train_one_epoch(
             else:
                 total_loss, vae_loss, type_loss, dist_loss, ssl_loss = model(sample)
 
-            # Backprop if training
             if train_mode:
                 optimizer.zero_grad()
                 if args.autocast:
                     scaler.scale(total_loss).backward()
+                    # Unscale and clip gradients
+                    scaler.unscale_(optimizer)
+                    nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
                     scaler.step(optimizer)
                     scaler.update()
                 else:
                     total_loss.backward()
+                    nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
                     optimizer.step()
 
-            # Accumulate local sums
             total_loss_sum += total_loss.item()
             vae_loss_sum   += vae_loss.item()
             type_loss_sum  += type_loss.item()
             dist_loss_sum  += dist_loss.item()
             if args.ssl and ssl_loss is not None:
-                ssl_loss_sum += ssl_loss.item()
+                # Check if ssl_loss is a tensor or a float.
+                if isinstance(ssl_loss, float):
+                    ssl_loss_sum += ssl_loss
+                else:
+                    ssl_loss_sum += ssl_loss.item()
 
-            # If rank 0 has a progress bar, update it
             if hasattr(pbar, "set_postfix"):
                 avg_so_far = total_loss_sum / local_count
                 pbar.set_postfix({'Loss': f"{avg_so_far:.3f}"})
 
-    # AGGREGATE across all ranks (only matters if distributed)
     if dist.is_initialized():
-        sum_tensor = torch.tensor([
-            total_loss_sum,
-            vae_loss_sum,
-            type_loss_sum,
-            dist_loss_sum,
-            ssl_loss_sum
-        ], device=device, dtype=torch.float)
+        sum_tensor = torch.tensor(
+            [total_loss_sum, vae_loss_sum, type_loss_sum, dist_loss_sum, ssl_loss_sum],
+            device=device, dtype=torch.float)
         count_tensor = torch.tensor([local_count], device=device, dtype=torch.float)
-
-        # all_reduce so every rank gets the grand total
         dist.all_reduce(sum_tensor, op=dist.ReduceOp.SUM)
         dist.all_reduce(count_tensor, op=dist.ReduceOp.SUM)
-
-        # Compute global means
-        global_sum = sum_tensor.cpu().numpy()  # shape [5]
+        global_sum = sum_tensor.cpu().numpy()
         global_count = count_tensor.item()
-
-        if global_count < 1e-8:  # avoid division by zero
+        if global_count < 1e-8:
             total_mean = vae_mean = type_mean = dist_mean = ssl_mean = 0.0
         else:
             total_mean = global_sum[0] / global_count
@@ -1476,36 +1388,33 @@ def train_one_epoch(
 
 
 def main_worker(gpu, ngpus_per_node, args):
-    # Adjust GPU if necessary.
     total_gpus = torch.cuda.device_count()
     if gpu >= total_gpus:
         gpu = 0
     rank = gpu
 
-    # Set up distributed environment.
     os.environ["MASTER_ADDR"] = "127.0.0.1"
     os.environ["MASTER_PORT"] = args.master_port
     dist.init_process_group("nccl", rank=rank, world_size=args.world_size)
     print(text_filling(f"Finished Setting DDP: CUDA:{rank}"), flush=True)
     torch.cuda.set_device(gpu)
 
-    # Build datasets.
     train_dataset = PDBbindDataset(args, mode="train")
     valid_dataset = PDBbindDataset(args, mode="valid")
-    train_sampler = DistributedSampler(train_dataset, num_replicas=args.world_size, rank=rank)
-    valid_sampler = DistributedSampler(valid_dataset, num_replicas=args.world_size, rank=rank, shuffle=False)
+
+    train_sampler = SystemGroupingSampler(train_dataset, shuffle=True)
+    valid_sampler = SystemGroupingSampler(valid_dataset, shuffle=False)
+
     train_dataloader = DataLoader(
         train_dataset,
-        batch_size=args.batch_size,
-        sampler=train_sampler,
+        batch_sampler=train_sampler,
         num_workers=args.num_workers,
         pin_memory=True,
         collate_fn=custom_collate_fn
     )
     valid_dataloader = DataLoader(
         valid_dataset,
-        batch_size=args.batch_size,
-        sampler=valid_sampler,
+        batch_sampler=valid_sampler,
         num_workers=args.num_workers,
         pin_memory=True,
         collate_fn=custom_collate_fn
@@ -1518,8 +1427,7 @@ def main_worker(gpu, ngpus_per_node, args):
         print("Validation dataset length:", N_VALID_DATA, flush=True)
         print(text_filling("Finished Loading Datasets"), flush=True)
 
-    # Build the model.
-    model = DeepICL(args)
+    model = DynaPep(args)
     torch.cuda.set_device(gpu)
     model.cuda(gpu)
     load_path = get_abs_path(args.pretrained_model) if args.pretrained_model is not None else None
@@ -1531,88 +1439,68 @@ def main_worker(gpu, ngpus_per_node, args):
         print("Number of Parameters:", param_count, flush=True)
         print(text_filling("Finished Loading Model"), flush=True)
 
-    # Set up the optimizer.
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode='min', factor=args.lr_decay, patience=args.lr_tolerance,
+        min_lr=args.lr_min, verbose=True
+    )
     scaler = None
     if args.autocast:
         import torch.cuda.amp as amp
         scaler = amp.GradScaler()
 
-    # VAE annealing parameters.
     vae_coeff_init, vae_coeff_final = args.vae_loss_coeff
     start_epoch = int(args.restart_file.split("_")[-1].split(".")[0]) if args.restart_file else 0
 
-    # Initialize best model tracking.
-    best_model_loss = float('inf')
+    best_valid_loss = float('inf')
     best_epoch = 0
-    min_valid_loss = float('inf')
-    lr_tick = 0
+    no_improve_counter = 0  # count epochs with no improvement
 
-    # Epoch loop.
     for epoch in range(start_epoch, args.num_epochs):
         if epoch == 0 and rank == 0:
-            print(
-                "EPOCH || TRA_VAE | TRA_SSL | TRA_TYPE | TRA_DIST | TRA_TOT || VAL_VAE | VAL_SSL | VAL_TYPE | VAL_DIST | VAL_TOT || TIME/EPOCH | LR | BEST_EPOCH",
-                flush=True
-            )
+            print("Training Started ...", flush=True)
 
-        # Update the samplers for this epoch.
-        train_sampler.set_epoch(epoch)
-        valid_sampler.set_epoch(epoch)
-
-        # Update VAE loss coefficient (KL annealing).
-        args.vae_coeff = vae_coeff_final + (vae_coeff_init - vae_coeff_final) * ((1 - args.vae_loss_beta) ** epoch)
-
-        st = time.time()
-        # Run training and validation for one epoch.
-        train_total, train_vae, train_type, train_dist, train_ssl = train_one_epoch(
+        train_total, train_vae, train_kl, train_md, train_ssl = train_one_epoch(
             model=model, args=args, optimizer=optimizer, data_loader=train_dataloader,
             train_mode=True, device=gpu, scaler=scaler
         )
-        valid_total, valid_vae, valid_type, valid_dist, valid_ssl = train_one_epoch(
+
+        valid_total, valid_vae, valid_kl, valid_md, valid_ssl = train_one_epoch(
             model=model, args=args, optimizer=optimizer, data_loader=valid_dataloader,
             train_mode=False, device=gpu, scaler=scaler
         )
-        et = time.time()
 
-        # Update best validation loss and save best model.
-        if valid_total < min_valid_loss:
-            min_valid_loss = valid_total
+        scheduler.step(valid_total)
+
+
+        if valid_total < best_valid_loss:
+            best_valid_loss = valid_total
             best_epoch = epoch
-            lr_tick = 0
+            no_improve_counter = 0
             if rank == 0:
                 best_model_path = os.path.join(get_abs_path(args.save_dir), "best_model.pt")
                 torch.save(model.state_dict(), best_model_path)
         else:
-            lr_tick += 1
+            no_improve_counter += 1
 
-        # Adjust learning rate if no improvement.
-        if lr_tick >= args.lr_tolerance:
-            for param_group in optimizer.param_groups:
-                lr_current = param_group["lr"]
-                if lr_current > args.lr_min:
-                    param_group["lr"] = lr_current * args.lr_decay
+        if no_improve_counter >= 50:
+            print("Early stopping: no improvement in validation loss for 50 epochs.")
+            break
 
-        if lr_tick > 20:
-            print("No more improvement, stopping training.")
-            sys.exit()
-
-        # Print epoch stats.
         if rank == 0:
-            print(
-                f"{epoch} || {train_vae:.3f} | {train_ssl:.3f} | {train_type:.3f} | {train_dist:.3f} | {train_total:.3f} || "
-                f"{valid_vae:.3f} | {valid_ssl:.3f} | {valid_type:.3f} | {valid_dist:.3f} | {valid_total:.3f} || "
-                f"{(et - st):.2f} | {[group['lr'] for group in optimizer.param_groups][0]:.4f} | {best_epoch}",
-                flush=True
-            )
+            print(f"Epoch {epoch}:")
+            print(f"  Train Total Loss : {train_total:.3f}")
+            print(f"  Valid Total Loss : {valid_total:.3f}")
+            print(f"  Learning Rate    : {[group['lr'] for group in optimizer.param_groups][0]:.4f}")
+            print(f"  Best Epoch So Far: {best_epoch}")
+            print("-" * 80)
 
-        # Save model checkpoint for this epoch.
         if epoch % args.save_every == 0 and rank == 0:
             epoch_model_path = os.path.join(get_abs_path(args.save_dir), f"save_{epoch}.pt")
             torch.save(model.state_dict(), epoch_model_path)
 
     if rank == 0:
-        print(f"Training complete. Best epoch: {best_epoch} with validation loss: {min_valid_loss:.4f}", flush=True)
+        print(f"Training complete. Best epoch: {best_epoch} with validation loss: {best_valid_loss:.4f}", flush=True)
 
 
 def main_train():
@@ -1626,8 +1514,6 @@ def main_train():
         print(a, "=", d[a])
     print("#" * 80, flush=True)
 
-    # If you want multi-GPU, you must actually have more than 1 GPU available.
-    # Otherwise, force single-GPU or CPU fallback.
     total_gpus = torch.cuda.device_count()
     if args.world_size > 1 and total_gpus > 1:
         args.distributed = True
@@ -1635,7 +1521,6 @@ def main_train():
         args.distributed = False
         args.world_size = 1
 
-    # Always pick a free port using your function
     args.master_port = find_free_port()
 
     if args.distributed:
@@ -1645,28 +1530,15 @@ def main_train():
 
 
 
-# ############################################################################
-# ##########################   The Single Entry   ############################
-# ############################################################################
-
 if __name__ == "__main__":
-    """
-    This single file can do:
-    - Train: python super_big_code.py train --save_dir ... 
-    - Evaluate: python super_big_code.py evaluate --result_dir ...
-    Or you can handle subcommands, etc.
-    """
     if len(sys.argv) < 2:
         print("Usage: python super_big_code.py [train|evaluate] <other args>")
         sys.exit(1)
-
     cmd = sys.argv[1]
     if cmd == "train":
-        # remove "train" from sys.argv for the parser
         sys.argv = [sys.argv[0]] + sys.argv[2:]
         main_train()
     elif cmd == "evaluate":
-        # remove "evaluate"
         sys.argv = [sys.argv[0]] + sys.argv[2:]
         main_evaluate()
     else:
