@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# super_big_code.py
+# md_train.py
 # ------------------------------------------------------------
 # This is DynaPep created and developed by Arvin Haj-Mirzaian 
 # ------------------------------------------------------------
